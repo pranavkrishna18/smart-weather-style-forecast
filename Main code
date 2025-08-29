@@ -1,0 +1,292 @@
+import sys
+import requests
+import collections
+from datetime import datetime, date
+from statistics import mean, mode
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QLabel, QLineEdit, QPushButton,
+    QVBoxLayout, QScrollArea, QMainWindow
+)
+from PyQt5.QtCore import Qt
+
+class WeatherApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("🌤 Weather Style & Activity Forecast")
+        self.setGeometry(100, 100, 600, 800)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        container = QWidget()
+        scroll_area.setWidget(container)
+        self.setCentralWidget(scroll_area)
+
+        self.city_label = QLabel("Enter city name:")
+        self.city_input = QLineEdit()
+        self.event_label = QLabel("Enter activity (optional):")
+        self.event_input = QLineEdit()
+        self.get_weather_button = QPushButton("Get 5-Day Forecast")
+        self.monthly_review_button = QPushButton("📆 Monthly Weather Review")
+
+        self.emoji_labels = []
+        self.forecast_labels = []
+        self.outfit_labels = []
+        self.activity_labels = []
+
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #0f172a;
+                color: #ffffff;
+                font-family: 'Segoe UI', sans-serif;
+                font-size: 16px;
+            }
+            QLabel {
+                background: transparent;
+                font-size: 18px;
+                padding: 5px;
+            }
+            QLineEdit {
+                background-color: #1e293b;
+                border: 2px solid #334155;
+                border-radius: 10px;
+                padding: 10px;
+                color: white;
+            }
+            QPushButton {
+                background-color: #6366f1;
+                color: white;
+                border-radius: 15px;
+                padding: 12px;
+                font-size: 18px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #4f46e5;
+            }
+        """)
+
+        vbox = QVBoxLayout()
+
+        self.city_label.setAlignment(Qt.AlignCenter)
+        self.city_input.setAlignment(Qt.AlignCenter)
+        self.event_label.setAlignment(Qt.AlignCenter)
+        self.event_input.setAlignment(Qt.AlignCenter)
+
+        vbox.addWidget(self.city_label)
+        vbox.addWidget(self.city_input)
+        vbox.addWidget(self.event_label)
+        vbox.addWidget(self.event_input)
+        vbox.addWidget(self.get_weather_button)
+        vbox.addWidget(self.monthly_review_button)
+
+        for _ in range(5):
+            emoji = QLabel("")
+            emoji.setAlignment(Qt.AlignCenter)
+            emoji.setStyleSheet("font-size: 48px;")
+
+            forecast = QLabel("")
+            forecast.setAlignment(Qt.AlignCenter)
+
+            outfit = QLabel("")
+            outfit.setAlignment(Qt.AlignCenter)
+            outfit.setStyleSheet("color: #cbd5e1; font-size: 16px;")
+
+            activity = QLabel("")
+            activity.setAlignment(Qt.AlignCenter)
+            activity.setStyleSheet("color: #94a3b8; font-size: 15px;")
+
+            self.emoji_labels.append(emoji)
+            self.forecast_labels.append(forecast)
+            self.outfit_labels.append(outfit)
+            self.activity_labels.append(activity)
+
+            vbox.addWidget(emoji)
+            vbox.addWidget(forecast)
+            vbox.addWidget(outfit)
+            vbox.addWidget(activity)
+
+        self.monthly_review_label = QLabel("")
+        self.monthly_review_label.setAlignment(Qt.AlignTop)
+        self.monthly_review_label.setWordWrap(True)
+        vbox.addWidget(self.monthly_review_label)
+
+        container.setLayout(vbox)
+
+        self.get_weather_button.clicked.connect(self.get_weather)
+        self.monthly_review_button.clicked.connect(self.get_monthly_review)
+
+    def get_weather(self):
+        api_key = "ff55e56e0815217fc89186e8130ea814"
+        city = self.city_input.text().strip()
+        event = self.event_input.text().strip()
+        if not city:
+            self.display_error("Please enter a city name!")
+            return
+
+        url = f"https://api.openweathermap.org/data/2.5/forecast?q={city}&appid={api_key}&units=metric"
+
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+
+            if data["cod"] == "200":
+                self.display_forecast(data, event)
+            else:
+                self.display_error("City not found!")
+        except requests.exceptions.RequestException as req_error:
+            self.display_error(f"Network Error: {req_error}")
+
+    def display_error(self, message):
+        for label in self.forecast_labels + self.emoji_labels + self.outfit_labels + self.activity_labels:
+            label.setText("")
+        self.forecast_labels[0].setText(message)
+
+    def display_forecast(self, data, event):
+        daily_forecast = {}
+
+        for entry in data["list"]:
+            dt = datetime.fromtimestamp(entry["dt"])
+            date_str = dt.strftime("%A")
+            temp = entry["main"]["temp"]
+            weather_id = entry["weather"][0]["id"]
+            description = entry["weather"][0]["description"].capitalize()
+
+            if date_str not in daily_forecast:
+                daily_forecast[date_str] = (temp, weather_id, description)
+            if len(daily_forecast) == 5:
+                break
+
+        for i, (day, (temp, weather_id, description)) in enumerate(daily_forecast.items()):
+            emoji = self.get_emoji(weather_id)
+            outfit = self.get_outfit_suggestion(temp, weather_id)
+            activity_suggestion = self.suggest_activity(event, weather_id, temp)
+
+            self.emoji_labels[i].setText(emoji)
+            self.forecast_labels[i].setText(f"{day}: {temp:.0f}°C - {description}")
+            self.outfit_labels[i].setText(f"👕 Outfit: {outfit}")
+            self.activity_labels[i].setText(f"🎯 Activity: {activity_suggestion}")
+
+    def get_monthly_review(self):
+        city = self.city_input.text().strip()
+        if not city:
+            self.display_error("Please enter a city name!")
+            return
+
+        try:
+            today = date.today()
+            start_date = date(today.year, 1, 1)
+
+            api_key = "VHW9FL5KXCSJ6VWVWVKF9XEUF"  
+            url = (
+                f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/"
+                f"{city}/{start_date}/{today}?unitGroup=metric&key={api_key}&include=days"
+            )
+
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+
+            monthly_data = collections.defaultdict(list)
+
+            for day in data["days"]:
+                dt = datetime.strptime(day["datetime"], "%Y-%m-%d").date()
+                month = dt.strftime("%B")
+                temp = day["temp"]
+                condition = day["conditions"]
+                monthly_data[month].append((temp, condition))
+
+            summary = f"🌤 Monthly Weather Summary for {city}:\n\n"
+            for month, entries in monthly_data.items():
+                temps = [e[0] for e in entries]
+                conditions = [e[1] for e in entries]
+                avg_temp = mean(temps)
+                try:
+                    common_condition = mode(conditions)
+                except:
+                    common_condition = conditions[0] if conditions else "Unknown"
+
+                weather_id = self.map_condition_to_weather_id(common_condition)
+                outfit = self.get_outfit_suggestion(avg_temp, weather_id)
+                activity = self.suggest_activity("general outdoor activity", weather_id, avg_temp)
+
+                summary += (
+                    f"📅 {month}: Avg Temp: {avg_temp:.1f}°C, Mostly {common_condition}\n"
+                    f"👕 Outfit: {outfit}\n"
+                    f"🎯 Activity: {activity}\n\n"
+                )
+
+            self.monthly_review_label.setText(summary)
+
+        except Exception as e:
+            self.display_error(f"Error fetching monthly data: {e}")
+
+    @staticmethod
+    def get_emoji(weather_id):
+        if 200 <= weather_id <= 232:
+            return "⛈️"
+        elif 300 <= weather_id <= 321:
+            return "🌦️"
+        elif 500 <= weather_id <= 531:
+            return "🌧️"
+        elif 600 <= weather_id <= 622:
+            return "❄️"
+        elif 701 <= weather_id <= 741:
+            return "🌫️"
+        elif weather_id == 800:
+            return "☀️"
+        elif 801 <= weather_id <= 804:
+            return "☁️"
+        else:
+            return "🌍"
+
+    @staticmethod
+    def get_outfit_suggestion(temp, weather_id):
+        if 500 <= weather_id <= 531:
+            return "Carry an umbrella ☔ and wear a waterproof jacket."
+        elif temp < 10:
+            return "Wear a heavy coat, gloves, and boots."
+        elif 10 <= temp < 20:
+            return "Wear a jacket and jeans."
+        elif 20 <= temp < 30:
+            return "Wear a t-shirt and jeans."
+        else:
+            return "Wear shorts and a light t-shirt."
+
+    @staticmethod
+    def suggest_activity(event, weather_id, temp):
+        if not event:
+            return "Enter an activity to get recommendations."
+        if weather_id in range(200, 600):
+            return f"Not ideal for {event}. Try something indoors."
+        elif temp < 5:
+            return f"Too cold for {event}. Indoor activities are better."
+        elif temp > 35:
+            return f"Too hot for {event}. Stay hydrated!"
+        else:
+            return f"Perfect weather for {event}! 🎉"
+
+    @staticmethod
+    def map_condition_to_weather_id(condition):
+        condition = condition.lower()
+        if "rain" in condition:
+            return 501
+        elif "snow" in condition:
+            return 601
+        elif "clear" in condition:
+            return 800
+        elif "cloud" in condition:
+            return 802
+        elif "fog" in condition or "mist" in condition:
+            return 741
+        elif "storm" in condition or "thunder" in condition:
+            return 202
+        else:
+            return 800
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    weather_app = WeatherApp()
+    weather_app.show()
+    sys.exit(app.exec_())
